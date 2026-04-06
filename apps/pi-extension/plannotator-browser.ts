@@ -101,13 +101,38 @@ async function openBrowserAndWait<T>(
 	server: { url: string; stop: () => void },
 	ctx: ExtensionContext,
 	waitForResult: () => Promise<T>,
+	signal?: AbortSignal,
 ): Promise<T> {
 	openBrowserForServer(server.url, ctx);
 
-	const result = await waitForResult();
+	const result = signal
+		? await raceAbort(waitForResult(), signal, () => server.stop())
+		: await waitForResult();
 	await delay(1500);
 	server.stop();
 	return result;
+}
+
+function raceAbort<T>(
+	promise: Promise<T>,
+	signal: AbortSignal,
+	cleanup?: () => void,
+): Promise<T> {
+	if (signal.aborted) {
+		cleanup?.();
+		return Promise.reject(new Error("Aborted"));
+	}
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => {
+			cleanup?.();
+			reject(new Error("Aborted"));
+		};
+		signal.addEventListener("abort", onAbort, { once: true });
+		promise.then(
+			(v) => { signal.removeEventListener("abort", onAbort); resolve(v); },
+			(e) => { signal.removeEventListener("abort", onAbort); reject(e); },
+		);
+	});
 }
 
 export async function startPlanReviewBrowserSession(
@@ -144,8 +169,12 @@ export async function startPlanReviewBrowserSession(
 export async function openPlanReviewBrowser(
 	ctx: ExtensionContext,
 	planContent: string,
+	signal?: AbortSignal,
 ): Promise<PlanReviewDecision> {
 	const session = await startPlanReviewBrowserSession(ctx, planContent);
+	if (signal) {
+		return raceAbort(session.waitForDecision(), signal, () => session.stop());
+	}
 	return session.waitForDecision();
 }
 
