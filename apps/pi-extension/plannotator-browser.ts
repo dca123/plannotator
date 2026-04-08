@@ -194,6 +194,7 @@ export async function openPlanReviewBrowser(
 export async function openCodeReview(
 	ctx: ExtensionContext,
 	options: { cwd?: string; defaultBranch?: string; diffType?: DiffType; prUrl?: string } = {},
+	signal?: AbortSignal,
 ): Promise<{ approved: boolean; feedback?: string; annotations?: unknown[]; agentSwitch?: string }> {
 	if (!ctx.hasUI || !reviewHtmlContent) {
 		throw new Error("Plannotator code review browser is unavailable in this session.");
@@ -387,7 +388,7 @@ export async function openCodeReview(
 		onCleanup: worktreeCleanup,
 	});
 
-	return openBrowserAndWait(server, ctx, server.waitForDecision);
+	return openBrowserAndWait(server, ctx, server.waitForDecision, signal);
 }
 
 export async function openMarkdownAnnotation(

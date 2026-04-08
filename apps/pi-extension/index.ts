@@ -106,6 +106,8 @@ export default function plannotator(pi: ExtensionAPI): void {
 	let planFilePath = "PLAN.md";
 	let checklistItems: ChecklistItem[] = [];
 	let savedState: SavedPhaseState | null = null;
+
+
 	let plannotatorConfig = {};
 
 	// ── Flags ────────────────────────────────────────────────────────────
@@ -334,41 +336,63 @@ export default function plannotator(pi: ExtensionAPI): void {
 
 	pi.registerCommand("plannotator-review", {
 		description: "Open interactive code review for current changes or a PR URL",
-		handler: async (args, ctx) => {
+		handler: async (args) => {
+			const prUrl = args?.trim() || undefined;
+			pi.sendUserMessage(prUrl ? `/plannotator-review ${prUrl}` : "/plannotator-review");
+		},
+	});
+
+	pi.registerTool({
+		name: "plannotator_review",
+		label: "Code Review",
+		description:
+			"Open the Plannotator code review UI in the browser. " +
+			"Call this tool when the user asks for a code review via /plannotator-review. " +
+			"Do NOT call this tool unless the user explicitly requested a code review.",
+		parameters: Type.Object({
+			prUrl: Type.Optional(
+				Type.String({ description: "GitHub/GitLab PR URL to review. Omit for local diff review." }),
+			),
+		}) as any,
+
+		async execute(_toolCallId, params: { prUrl?: string }, signal, _onUpdate, ctx) {
 			if (!hasReviewBrowserHtml()) {
-				ctx.ui.notify(
-					"Code review UI not available. Run 'bun run build' in the pi-extension directory.",
-					"error",
-				);
-				return;
+				return {
+					content: [{ type: "text", text: "Code review UI not available. Run 'bun run build' in the pi-extension directory." }],
+					details: {},
+				};
 			}
 
 			try {
-				const prUrl = args?.trim() || undefined;
-				const isPRReview = prUrl?.startsWith("http://") || prUrl?.startsWith("https://");
-				const result = await openCodeReview(ctx, { prUrl });
+				const result = await openCodeReview(ctx, { prUrl: params.prUrl }, signal);
 				if (result.feedback) {
+					const isPR = !!params.prUrl;
 					if (result.approved) {
-						pi.sendUserMessage(
-							`# Code Review\n\nCode review completed — no changes requested.`,
-						);
-					} else if (isPRReview) {
-						// Platform PR actions (approve/comment) return approved:false with a
-						// status message — don't tell the agent to "address" a platform action.
-						pi.sendUserMessage(result.feedback);
-					} else {
-						pi.sendUserMessage(
-							`${result.feedback}\n\nPlease address this feedback.`,
-						);
+						return {
+							content: [{ type: "text", text: "Code review completed — no changes requested." }],
+							details: { approved: true },
+						};
 					}
-				} else {
-					ctx.ui.notify("Code review closed (no feedback).", "info");
+					return {
+						content: [{ type: "text", text: `${result.feedback}${isPR ? "" : "\n\nPlease address this feedback."}` }],
+						details: { approved: false, agentSwitch: result.agentSwitch },
+					};
 				}
+				return {
+					content: [{ type: "text", text: "Code review closed (no feedback)." }],
+					details: {},
+				};
 			} catch (err) {
-				ctx.ui.notify(
-					`Failed to start code review UI: ${getStartupErrorMessage(err)}`,
-					"error",
-				);
+				if (signal?.aborted) {
+					return {
+						content: [{ type: "text", text: "Code review cancelled." }],
+						details: {},
+					};
+				}
+				return {
+					content: [{ type: "text", text: `Failed to start code review: ${getStartupErrorMessage(err)}` }],
+					details: {},
+				};
 			}
 		},
 	});
