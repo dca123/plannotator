@@ -132,9 +132,8 @@ export function runGitDiff(
 	diffType: DiffType,
 	defaultBranch = "main",
 	cwd?: string,
-	pathFilter?: string,
 ): Promise<{ patch: string; label: string; error?: string }> {
-	return runGitDiffCore(reviewRuntime, diffType, defaultBranch, cwd, pathFilter);
+	return runGitDiffCore(reviewRuntime, diffType, defaultBranch, cwd);
 }
 
 export async function startReviewServer(options: {

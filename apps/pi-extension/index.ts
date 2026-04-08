@@ -335,10 +335,10 @@ export default function plannotator(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("plannotator-review", {
-		description: "Open interactive code review for current changes, a PR URL, or a folder path",
+		description: "Open interactive code review for current changes or a PR URL",
 		handler: async (args) => {
-			const arg = args?.trim() || undefined;
-			pi.sendUserMessage(arg ? `/plannotator-review ${arg}` : "/plannotator-review");
+			const prUrl = args?.trim() || undefined;
+			pi.sendUserMessage(prUrl ? `/plannotator-review ${prUrl}` : "/plannotator-review");
 		},
 	});
 
@@ -353,12 +353,9 @@ export default function plannotator(pi: ExtensionAPI): void {
 			prUrl: Type.Optional(
 				Type.String({ description: "GitHub/GitLab PR URL to review. Omit for local diff review." }),
 			),
-			pathFilter: Type.Optional(
-				Type.String({ description: "Folder or file path to scope the diff to. Only changes under this path are shown." }),
-			),
 		}) as any,
 
-		async execute(_toolCallId, params: { prUrl?: string; pathFilter?: string }, signal, _onUpdate, ctx) {
+		async execute(_toolCallId, params: { prUrl?: string }, signal, _onUpdate, ctx) {
 			if (!hasReviewBrowserHtml()) {
 				return {
 					content: [{ type: "text", text: "Code review UI not available. Run 'bun run build' in the pi-extension directory." }],
@@ -367,7 +364,7 @@ export default function plannotator(pi: ExtensionAPI): void {
 			}
 
 			try {
-				const result = await openCodeReview(ctx, { prUrl: params.prUrl, pathFilter: params.pathFilter }, signal);
+				const result = await openCodeReview(ctx, { prUrl: params.prUrl }, signal);
 				if (result.feedback) {
 					const isPR = !!params.prUrl;
 					if (result.approved) {

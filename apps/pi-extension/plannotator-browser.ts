@@ -193,7 +193,7 @@ export async function openPlanReviewBrowser(
 
 export async function openCodeReview(
 	ctx: ExtensionContext,
-	options: { cwd?: string; defaultBranch?: string; diffType?: DiffType; prUrl?: string; pathFilter?: string } = {},
+	options: { cwd?: string; defaultBranch?: string; diffType?: DiffType; prUrl?: string } = {},
 	signal?: AbortSignal,
 ): Promise<{ approved: boolean; feedback?: string; annotations?: unknown[]; agentSwitch?: string }> {
 	if (!ctx.hasUI || !reviewHtmlContent) {
@@ -367,7 +367,7 @@ export async function openCodeReview(
 		gitCtx = await getGitContext(cwd);
 		const defaultBranch = options.defaultBranch ?? gitCtx.defaultBranch;
 		diffType = options.diffType ?? "uncommitted";
-		const result = await runGitDiff(diffType, defaultBranch, cwd, options.pathFilter);
+		const result = await runGitDiff(diffType, defaultBranch, cwd);
 		rawPatch = result.patch;
 		gitRef = result.label;
 		diffError = result.error;
