@@ -178,6 +178,7 @@ async function getUntrackedFileDiffs(
   srcPrefix = "a/",
   dstPrefix = "b/",
   cwd?: string,
+  pathFilter?: string,
 ): Promise<string> {
   // git ls-files scopes to the CWD subtree and returns CWD-relative paths,
   // unlike git diff HEAD which always covers the full repo with root-relative
@@ -196,10 +197,15 @@ async function getUntrackedFileDiffs(
   );
   if (lsResult.exitCode !== 0) return "";
 
-  const files = lsResult.stdout
+  let files = lsResult.stdout
     .trim()
     .split("\n")
     .filter((file) => file.length > 0);
+
+  if (pathFilter) {
+    const prefix = pathFilter.endsWith("/") ? pathFilter : pathFilter + "/";
+    files = files.filter((f) => f === pathFilter || f.startsWith(prefix));
+  }
 
   if (files.length === 0) return "";
 
@@ -264,11 +270,17 @@ export function parseWorktreeDiffType(
   return { path: rest, subType: "uncommitted" };
 }
 
+/** Append `-- <path>` to a git diff arg list when a path filter is active. */
+function withPathFilter(args: string[], pathFilter?: string): string[] {
+  return pathFilter ? [...args, "--", pathFilter] : args;
+}
+
 export async function runGitDiff(
   runtime: ReviewGitRuntime,
   diffType: DiffType,
   defaultBranch: string = "main",
   externalCwd?: string,
+  pathFilter?: string,
 ): Promise<DiffResult> {
   let patch = "";
   let label = "";
@@ -291,13 +303,13 @@ export async function runGitDiff(
   try {
     switch (effectiveDiffType) {
       case "uncommitted": {
-        const trackedDiffArgs = [
+        const trackedDiffArgs = withPathFilter([
           "diff",
           "--no-ext-diff",
           "HEAD",
           "--src-prefix=a/",
           "--dst-prefix=b/",
-        ];
+        ], pathFilter);
         const hasHead =
           (await runtime.runGit(["rev-parse", "--verify", "HEAD"], { cwd }))
             .exitCode === 0;
@@ -312,6 +324,7 @@ export async function runGitDiff(
           "a/",
           "b/",
           cwd,
+          pathFilter,
         );
         patch = trackedPatch + untrackedDiff;
         label = "Uncommitted changes";
@@ -319,13 +332,13 @@ export async function runGitDiff(
       }
 
       case "staged": {
-        const stagedDiffArgs = [
+        const stagedDiffArgs = withPathFilter([
           "diff",
           "--no-ext-diff",
           "--staged",
           "--src-prefix=a/",
           "--dst-prefix=b/",
-        ];
+        ], pathFilter);
         const stagedDiff = assertGitSuccess(
           await runtime.runGit(stagedDiffArgs, { cwd }),
           stagedDiffArgs,
@@ -336,7 +349,7 @@ export async function runGitDiff(
       }
 
       case "unstaged": {
-        const trackedDiffArgs = ["diff", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"];
+        const trackedDiffArgs = withPathFilter(["diff", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"], pathFilter);
         const trackedDiff = assertGitSuccess(
           await runtime.runGit(trackedDiffArgs, { cwd }),
           trackedDiffArgs,
@@ -346,6 +359,7 @@ export async function runGitDiff(
           "a/",
           "b/",
           cwd,
+          pathFilter,
         );
         patch = trackedDiff.stdout + untrackedDiff;
         label = "Unstaged changes";
@@ -357,10 +371,12 @@ export async function runGitDiff(
           ["rev-parse", "--verify", "HEAD~1"],
           { cwd },
         );
-        const args =
+        const args = withPathFilter(
           hasParent.exitCode === 0
             ? ["diff", "--no-ext-diff", "HEAD~1..HEAD", "--src-prefix=a/", "--dst-prefix=b/"]
-            : ["diff", "--no-ext-diff", "--root", "HEAD", "--src-prefix=a/", "--dst-prefix=b/"];
+            : ["diff", "--no-ext-diff", "--root", "HEAD", "--src-prefix=a/", "--dst-prefix=b/"],
+          pathFilter,
+        );
         const lastCommitDiff = assertGitSuccess(
           await runtime.runGit(args, { cwd }),
           args,
@@ -371,13 +387,13 @@ export async function runGitDiff(
       }
 
       case "branch": {
-        const branchDiffArgs = [
+        const branchDiffArgs = withPathFilter([
           "diff",
           "--no-ext-diff",
           `${defaultBranch}..HEAD`,
           "--src-prefix=a/",
           "--dst-prefix=b/",
-        ];
+        ], pathFilter);
         const branchDiff = assertGitSuccess(
           await runtime.runGit(branchDiffArgs, { cwd }),
           branchDiffArgs,
@@ -393,13 +409,13 @@ export async function runGitDiff(
           ["merge-base", defaultBranch, "HEAD"],
         );
         const mergeBase = mergeBaseResult.stdout.trim();
-        const mergeBaseDiffArgs = [
+        const mergeBaseDiffArgs = withPathFilter([
           "diff",
           "--no-ext-diff",
           `${mergeBase}..HEAD`,
           "--src-prefix=a/",
           "--dst-prefix=b/",
-        ];
+        ], pathFilter);
         const mergeBaseDiff = assertGitSuccess(
           await runtime.runGit(mergeBaseDiffArgs, { cwd }),
           mergeBaseDiffArgs,
